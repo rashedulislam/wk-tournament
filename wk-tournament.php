@@ -501,4 +501,121 @@ add_filter('manage_match_posts_columns', 'wk_tournament_schedule_posts_custom_co
 		</div>
     <?php
 }
-	
+
+
+function wpse_get_dynamic_schedule_shortcode($atts) {
+	error_log(print_r( $atts, 1 ));
+    // Extract shortcode attributes
+    $atts = shortcode_atts(
+        array(
+            'teamname' => '',
+            'tournamentid' => 0
+        ),
+        $atts,
+        'get_dynamic_schedule'
+    );
+
+    $teamName = sanitize_text_field($atts['teamname']);
+    $tournamentID = sanitize_text_field($atts['tournamentid']);
+
+    // If the tournamentID is not valid or teamName is empty, display an error message
+    if ($tournamentID <= 0 || empty($teamName)) {
+        return 'Invalid team name or tournament ID.';
+    }
+
+    // Get the current date in the proper format for comparison
+    $current_date = current_time('Y-m-d H:i:s');
+
+    // Query the custom posts with the tournamentID and future game dates
+    $args = array(
+        'post_type' => 'match',
+        'meta_query' => array(
+            'relation' => 'AND',
+            array(
+                'key' => 'leagueID',
+                'value' => $tournamentID,
+                'compare' => '='
+            ),
+            array(
+                'relation' => 'OR',
+                array(
+                    'key' => 'homeTeamDisplayName',
+                    'value' => $teamName,
+                    'compare' => 'LIKE'
+                ),
+                array(
+                    'key' => 'awayTeamDisplayName',
+                    'value' => $teamName,
+                    'compare' => 'LIKE'
+                )
+            ),
+            array(
+                'key' => 'gameDate',
+                'value' => $current_date,
+                'compare' => '>=',
+                'type' => 'DATETIME'
+            )
+        ),
+        'orderby' => 'meta_value',
+        'order' => 'ASC',
+        'meta_key' => 'gameDate',
+        'meta_type' => 'DATETIME'
+    );
+    $query = new WP_Query($args);
+
+    // Check if there are any posts
+    if (!$query->have_posts()) {
+        return 'No upcoming games found for the provided team and tournament ID.';
+    }
+
+    // Initialize HTML output with the table structure
+    $output = '<table style="width:100%; border-collapse: collapse; margin-bottom: 20px;">';
+    $output .= '<thead>';
+    $output .= '<tr style="background-color: #f2f2f2;">';
+    $output .= '<th style="border: 1px solid #dddddd; text-align: left; padding: 8px;">Date</th>';
+    $output .= '<th style="border: 1px solid #dddddd; text-align: left; padding: 8px;">Arena</th>';
+    $output .= '<th style="border: 1px solid #dddddd; text-align: left; padding: 8px;">Match</th>';
+    $output .= '<th style="border: 1px solid #dddddd; text-align: left; padding: 8px;">Score</th>';
+    $output .= '<th style="border: 1px solid #dddddd; text-align: left; padding: 8px;">Officials</th>';
+    $output .= '<th style="border: 1px solid #dddddd; text-align: left; padding: 8px;">Speak</th>';
+    $output .= '<th style="border: 1px solid #dddddd; text-align: left; padding: 8px;">PC</th>';
+    $output .= '<th style="border: 1px solid #dddddd; text-align: left; padding: 8px;">Ur</th>';
+    $output .= '<th style="border: 1px solid #dddddd; text-align: left; padding: 8px;">Boks</th>';
+    $output .= '<th style="border: 1px solid #dddddd; text-align: left; padding: 8px;">Cafe</th>';
+    $output .= '<th style="border: 1px solid #dddddd; text-align: left; padding: 8px;">Chauffør</th>';
+    $output .= '</tr>';
+    $output .= '</thead>';
+    $output .= '<tbody>';
+
+    // Loop through each post and add it to the table
+    while ($query->have_posts()) {
+        $query->the_post();
+        $game_date = get_post_meta(get_the_ID(), 'gameDate', true);
+        $arena_name = get_post_meta(get_the_ID(), 'ArenaName', true);
+        $oponents = get_post_meta(get_the_ID(), 'oponents', true);
+        $score = get_post_meta(get_the_ID(), 'score', true);
+        $game_officials = get_post_meta(get_the_ID(), 'officials', true);
+
+        $output .= '<tr>';
+        $output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;">' . esc_html(date('j. F, Y, H:i', strtotime($game_date))) . '</td>';
+        $output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;">' . esc_html($arena_name) . '</td>';
+        $output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;">' . esc_html($oponents) . '</td>';
+        $output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;">' . esc_html($score) . '</td>';
+        $output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;">' . $game_officials . '</td>';
+        $output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;"></td>';
+        $output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;"></td>';
+        $output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;"></td>';
+        $output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;"></td>';
+        $output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;"></td>';
+        $output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;"></td>';
+        $output .= '</tr>';
+    }
+
+    wp_reset_postdata();
+
+    $output .= '</tbody>';
+    $output .= '</table>';
+
+    return $output;
+}
+add_shortcode('get_dynamic_schedule', 'wpse_get_dynamic_schedule_shortcode');
