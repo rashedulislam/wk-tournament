@@ -156,7 +156,6 @@ function wk_fetch_tournaments_callback() {
     }
 
     $seasonID = sanitize_text_field($_POST['seasonID']);
-    $team = get_option('wxp_tournament_team', '');
 
     if (empty($seasonID)) {
         wp_send_json_error([
@@ -520,7 +519,7 @@ function tournament_settings_page() {
                     <th scope="row">Sæson ID</th>
                     <td>
                         <input type="text" id="season-id" name="season_id" value="<?php echo esc_attr(get_option('season_id')); ?>" />
-                        <button type="button" id="fetchTournaments" class="button button-primary" style="margin-left: 20px;">Hent alle turneringer fra Sæson ID</button>
+                        <button type="button" id="fetchSeason" class="button button-primary" style="margin-left: 20px;">Hent alle turneringer fra Sæson ID</button>
                     </td>
                 </tr>
                 

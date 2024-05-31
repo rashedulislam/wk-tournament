@@ -16,15 +16,15 @@ jQuery(document).ready(function ($) {
     });
   }
 
-  $("#fetchTournaments").click(function () {
+  $("#fetchSeason").click(function () {
     Swal.showLoading();
-    let tournamentID = $("#tournament-id").val();
+    let seasonID = $("#season-id").val();
     $.post({
       url: wkTournament.ajaxurl,
       data: {
         action: "wk_fetch_tournaments",
         _wpnonce: wkTournament.nonce,
-        tournamentID: tournamentID,
+        seasonID: seasonID,
       },
       success: function (response) {
         console.log(response);
