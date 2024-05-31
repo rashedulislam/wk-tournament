@@ -5,7 +5,7 @@
  * Plugin URI: https://wxp.dk
  * Author: Md Rashedul Islam & Prokop Suchanek // WooCommerce Eksperten
  * Author URI: https://wxp.dk
- * Version: 1.2
+ * Version: 1.3
  * License: GPL2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: wk-tournament
@@ -145,92 +145,216 @@ function wk_get_tournaments_button_shortcode(){
 add_action('wp_ajax_wk_fetch_tournaments', 'wk_fetch_tournaments_callback' );
 add_action('wp_ajax_nopriv_wk_fetch_tournaments', 'wk_fetch_tournaments_callback');
 
-function wk_fetch_tournaments_callback(){
+// FETCH TOURNAMENTS
+function wk_fetch_tournaments_callback() {
+    global $api_key;
 
-	global $api_key;
+    if (! wp_verify_nonce($_REQUEST['_wpnonce'], 'get_wk_tournaments') ) {
+        wp_send_json_error([
+            'message' => __('Nonce verification failed!', 'wk-tournament')
+        ]);
+    }
 
-	if (! wp_verify_nonce($_REQUEST['_wpnonce'], 'get_wk_tournaments') ) {
-		wp_send_json_error(
-			[
-			'message' => __('Nonce verification failed!', 'wk-tournament')
-			 ] 
-		);
-	}
+    $seasonID = sanitize_text_field($_POST['seasonID']);
+    $team = get_option('wxp_tournament_team', '');
 
-	$seasonID = sanitize_text_field($_POST['tournamentID']);
+    if (empty($seasonID)) {
+        wp_send_json_error([
+            'message' => __('Invalid season ID.', 'wk-tournament')
+        ]);
+    }
 
-	$api_url = 'http://api.sportsadmin.dk/api/v1/GetTournaments?seasonID=' . $seasonID;
+    $api_url = 'http://api.sportsadmin.dk/api/v1/GetTournaments?seasonID=' . $seasonID;
 
-	$response = wp_remote_get($api_url, array('headers' => array('ApiKey' => $api_key)));
+    $response = wp_remote_get($api_url, array('headers' => array('ApiKey' => $api_key)));
 
-	if (!is_wp_error($response)) {
-		if ($response['response']['code'] === 200) {
-			$body = wp_remote_retrieve_body($response);
+    if (is_wp_error($response)) {
+        $error_message = $response->get_error_message();
+        error_log(print_r($error_message, 1));
+        wp_send_json_error([
+            'message' => $error_message
+        ]);
+    }
 
-			$tournaments = json_decode($body);
-		
-			if (empty($tournaments)) {
-				wp_send_json_success(
-					[
-					'message' => __('No tournaments found.!', 'wk-tournament')
-					]
-				);
-			}
+    if ($response['response']['code'] !== 200) {
+        $response_message = wp_remote_retrieve_response_message($response);
+        wp_send_json_error([
+            'message' => $response_message
+        ]);
+    }
 
-			foreach ($tournaments as $post) {
-				$existing_post = get_posts(array(
-					'post_type' => 'tournament',
-					'meta_key' => 'tournament_id',
-					'meta_value' => $post->TournamentID,
-					'posts_per_page' => 1
-				));
-			
-				if ($existing_post) {
-					$post_id = $existing_post[0]->ID;
-					$updated_post_data = array(
-						'post_title' => $post->Name,
-						'meta_input' => array(
-							'seasonid' => $post->SeasonID,
-							'tournament_id' => $post->TournamentID,
-							'tournament_type' => $post->TournamentType
-						)
-					);
-					wp_update_post(array_merge(['ID' => $post_id], $updated_post_data));
-				} else {
-					$new_post_data = array(
-						'post_title' => $post->Name,
-						'post_type' => 'tournament',
-						'meta_input' => array(
-							'seasonid' => $post->SeasonID,
-							'tournament_id' => $post->TournamentID,
-							'tournament_type' => $post->TournamentType
-						),
-						'post_status' => 'publish'
-					);
-					wp_insert_post($new_post_data);
-				}
-			}
-			wp_send_json_success(
-				[
-				'message' => __('Tournament posts has been updated successfully!', 'wk-tournament')
-				]
-			);
-		} else {
-			$response_message = wp_remote_retrieve_response_message($response);
-			wp_send_json_error([
-				'message' => $response_message
-			]);
-		}
-		
-	} else {
-		$error_message = $response->get_error_message();
-		error_log(print_r( $error_message, 1 ));
-		wp_send_json_error([
-			'message' => $error_message
-		]);
-	}
+    $body = wp_remote_retrieve_body($response);
+    $tournaments = json_decode($body);
 
+    if (empty($tournaments)) {
+        wp_send_json_success([
+            'message' => __('No tournaments found.', 'wk-tournament')
+        ]);
+    }
+
+    foreach ($tournaments as $post) {
+        $existing_post = get_posts(array(
+            'post_type' => 'tournament',
+            'meta_key' => 'tournament_id',
+            'meta_value' => $post->TournamentID,
+            'posts_per_page' => 1
+        ));
+
+        if ($existing_post) {
+            $post_id = $existing_post[0]->ID;
+            $updated_post_data = array(
+                'post_title' => $post->Name,
+                'meta_input' => array(
+                    'seasonid' => $post->SeasonID,
+                    'tournament_id' => $post->TournamentID,
+                    'tournament_type' => $post->TournamentType
+                )
+            );
+            wp_update_post(array_merge(['ID' => $post_id], $updated_post_data));
+        } else {
+            $new_post_data = array(
+                'post_title' => $post->Name,
+                'post_type' => 'tournament',
+                'meta_input' => array(
+                    'seasonid' => $post->SeasonID,
+                    'tournament_id' => $post->TournamentID,
+                    'tournament_type' => $post->TournamentType
+                ),
+                'post_status' => 'publish'
+            );
+            wp_insert_post($new_post_data);
+        }
+    }
+
+    wp_send_json_success([
+        'message' => __('Tournament posts have been updated successfully!', 'wk-tournament')
+    ]);
 }
+add_action('wp_ajax_fetch_tournaments', 'wk_fetch_tournaments_callback');
+
+// FETCH MATCHES
+function wk_fetch_tournament_schedule_callback() {
+    global $api_key;
+
+    if (! wp_verify_nonce($_REQUEST['_wpnonce'], 'get_wk_tournaments') ) {
+        wp_send_json_error([
+            'message' => __('Nonce verification failed!', 'wk-tournament')
+        ]);
+    }
+
+    $tournamentID = sanitize_text_field($_POST['tournamentID']);
+    $team = get_option('wxp_tournament_team', '');
+
+    if (empty($tournamentID)) {
+        wp_send_json_error([
+            'message' => __('Invalid tournament ID.', 'wk-tournament')
+        ]);
+    }
+
+    if (empty($team)) {
+        wp_send_json_error([
+            'message' => __('Team name is not set in the settings.', 'wk-tournament')
+        ]);
+    }
+
+    $api_url = 'http://api.sportsadmin.dk/api/v1/GetTournamentSchedule?tournamentID=' . $tournamentID;
+
+    $response = wp_remote_get($api_url, array('headers' => array('ApiKey' => $api_key)));
+
+    if (is_wp_error($response)) {
+        $error_message = $response->get_error_message();
+        error_log(print_r($error_message, 1));
+        wp_send_json_error([
+            'message' => $error_message
+        ]);
+    }
+
+    if ($response['response']['code'] !== 200) {
+        $response_message = wp_remote_retrieve_response_message($response);
+        wp_send_json_error([
+            'message' => $response_message
+        ]);
+    }
+
+    $body = wp_remote_retrieve_body($response);
+    $matches = json_decode($body);
+
+    if (empty($matches)) {
+        wp_send_json_success([
+            'message' => __('No Matches found.', 'wk-tournament')
+        ]);
+    }
+
+    foreach ($matches as $match) {
+        if ($match->homeTeamDisplayName !== $team && $match->awayTeamDisplayName !== $team) {
+            continue;
+        }
+
+        $existingMatch = get_posts(array(
+            'post_type' => 'match',
+            'meta_key' => 'gameID',
+            'meta_value' => $match->gameID,
+            'posts_per_page' => 1
+        ));
+
+        $officialsList = implode('<br>', array_map(function ($official) {
+            return esc_html($official->role) . ': ' . esc_html($official->name);
+        }, $match->gameOfficials));
+
+        $post_title = date('d-m-Y', strtotime($match->gameDate)) . ', ' . esc_html($match->homeTeamDisplayName) . ' - ' . esc_html($match->awayTeamDisplayName) . ', ' . $match->leagueID;
+
+        if ($existingMatch) {
+            $post_id = $existingMatch[0]->ID;
+            $updated_post_data = array(
+                'ID' => $post_id,
+                'post_title' => $post_title,
+                'post_content' => '',
+                'post_excerpt' => '',
+                'meta_input' => array(
+                    'gameDate' => date('Y-m-d H:i:s', strtotime($match->gameDate)),
+                    'ArenaName' => $match->ArenaName,
+                    'oponents' => esc_html($match->homeTeamDisplayName) . ' vs. ' . esc_html($match->awayTeamDisplayName),
+                    'score' => esc_html($match->homeTeamGoals) . ' - ' . esc_html($match->awayTeamGoals),
+                    'homeTeamDisplayName' => $match->homeTeamDisplayName,
+                    'awayTeamDisplayName' => $match->awayTeamDisplayName,
+                    'homeTeamGoals' => $match->homeTeamGoals,
+                    'awayTeamGoals' => $match->awayTeamGoals,
+                    'officials' => $officialsList,
+                    'gameID' => $match->gameID,
+                    'leagueID' => $match->leagueID
+                )
+            );
+            wp_update_post($updated_post_data);
+        } else {
+            $new_post_data = array(
+                'post_title' => $post_title,
+                'post_type' => 'match',
+                'post_content' => '',
+                'post_excerpt' => '',
+                'meta_input' => array(
+                    'gameDate' => date('Y-m-d H:i:s', strtotime($match->gameDate)),
+                    'ArenaName' => $match->ArenaName,
+                    'oponents' => esc_html($match->homeTeamDisplayName) . ' vs. ' . esc_html($match->awayTeamDisplayName),
+                    'score' => esc_html($match->homeTeamGoals) . ' - ' . esc_html($match->awayTeamGoals),
+                    'homeTeamDisplayName' => $match->homeTeamDisplayName,
+                    'awayTeamDisplayName' => $match->awayTeamDisplayName,
+                    'homeTeamGoals' => $match->homeTeamGoals,
+                    'awayTeamGoals' => $match->awayTeamGoals,
+                    'officials' => $officialsList,
+                    'gameID' => $match->gameID,
+                    'leagueID' => $match->leagueID
+                ),
+                'post_status' => 'publish'
+            );
+            wp_insert_post($new_post_data);
+        }
+    }
+
+    wp_send_json_success([
+        'message' => __('Match posts have been updated successfully!', 'wk-tournament')
+    ]);
+}
+add_action('wp_ajax_fetch_matches', 'wk_fetch_tournament_schedule_callback');
 
 
 /**
@@ -298,123 +422,6 @@ add_action('wp_ajax_wk_fetch_tournament_schedule', 'wk_fetch_tournament_schedule
 add_action('wp_ajax_nopriv_wk_fetch_tournament_schedule', 'wk_fetch_tournament_schedule_callback');
 
 
-function wk_fetch_tournament_schedule_callback() {
-
-	global $api_key;
-
-	if (! wp_verify_nonce($_REQUEST['_wpnonce'], 'get_wk_tournaments') ) {
-		wp_send_json_error(
-			[
-			'message' => __('Nonce verification failed!', 'wk-tournament')
-			 ] 
-		);
-	}
-
-	$tournamentID = sanitize_text_field($_POST['tournamentID']);
-
-	$api_url = 'http://api.sportsadmin.dk/api/v1/GetTournamentSchedule?tournamentID=' . $tournamentID;
-
-	$response = wp_remote_get($api_url, array('headers' => array('ApiKey' => $api_key)));
-
-	if (!is_wp_error($response)) {
-		if ($response['response']['code'] === 200) {
-			$body = wp_remote_retrieve_body($response);
-
-			$matches = json_decode($body);
-		
-			if (empty($matches)) {
-				wp_send_json_success(
-					[
-					'message' => __('No Matches found.!', 'wk-tournament')
-					]
-				);
-			}
-
-			foreach ($matches as $match) {
-				$existingMatch = get_posts(array(
-					'post_type' => 'match',
-					'meta_key' => 'gameID',
-					'meta_value' => $match->gameID,
-					'posts_per_page' => 1
-				));
-
-				$officialsList = implode('<br>', array_map(function ($official) {
-					return esc_html($official->role) . ': ' . esc_html($official->name);
-				}, $match->gameOfficials));
-			
-				$post_title = date('d-m-Y', strtotime($match->gameDate)) . ', ' . esc_html($match->homeTeamDisplayName) . ' - ' . esc_html($match->awayTeamDisplayName) . ', ' . $match->leagueID;
-
-				if ($existingMatch) {
-					$post_id = $existingMatch[0]->ID;
-					$updated_post_data = array(
-						'ID' => $post_id,
-						'post_title' => $post_title,
-						'post_content' => '',
-						'post_excerpt' => '',
-						'meta_input' => array(
-							'gameDate' => date('Y-m-d H:i:s', strtotime($match->gameDate)),
-							'ArenaName' => $match->ArenaName,
-							'oponents' => esc_html($match->homeTeamDisplayName) . ' vs. ' . esc_html($match->awayTeamDisplayName),
-							'score' =>  esc_html($match->homeTeamGoals) . ' - ' . esc_html($match->awayTeamGoals),
-							'homeTeamDisplayName' => $match->homeTeamDisplayName,
-							'awayTeamDisplayName' => $match->awayTeamDisplayName,
-							'homeTeamGoals' => $match->homeTeamGoals,
-							'awayTeamGoals' => $match->awayTeamGoals,
-							'officials' => $officialsList,
-							'gameID' => $match->gameID,
-							'leagueID' => $match->leagueID
-						)
-					);
-					wp_update_post($updated_post_data);
-				} else {
-					$new_post_data = array(
-						'post_title' => $post_title,
-						'post_type' => 'match',
-						'post_content' => '',
-						'post_excerpt' => '',
-						'meta_input' => array(
-							'gameDate' => date('Y-m-d H:i:s', strtotime($match->gameDate)),
-							'ArenaName' => $match->ArenaName,
-							'oponents' => esc_html($match->homeTeamDisplayName) . ' vs. ' . esc_html($match->awayTeamDisplayName),
-							'score' =>  esc_html($match->homeTeamGoals) . ' - ' . esc_html($match->awayTeamGoals),
-							'homeTeamDisplayName' => $match->homeTeamDisplayName,
-							'awayTeamDisplayName' => $match->awayTeamDisplayName,
-							'homeTeamGoals' => $match->homeTeamGoals,
-							'awayTeamGoals' => $match->awayTeamGoals,
-							'officials' => $officialsList,
-							'gameID' => $match->gameID,
-							'leagueID' => $match->leagueID
-						),
-						'post_status' => 'publish'
-					);
-					wp_insert_post($new_post_data);
-				}
-			}
-			wp_send_json_success(
-				[
-				'message' => __('Match posts have been updated successfully!', 'wk-tournament')
-				]
-			);
-		} else {
-			$response_message = wp_remote_retrieve_response_message($response);
-			wp_send_json_error([
-				'message' => $response_message
-			]);
-		}
-		
-	} else {
-		$error_message = $response->get_error_message();
-		error_log(print_r( $error_message, 1 ));
-		wp_send_json_error([
-			'message' => $error_message
-		]);
-	}
-
-}
-
-
-
-
 function wk_tournament_schedule_posts_custom_columns_head($defaults) {
 	unset($defaults['date']);
     $defaults['gameDate'] = 'Dating';
@@ -455,83 +462,111 @@ add_filter('manage_match_posts_columns', 'wk_tournament_schedule_posts_custom_co
 	}
 	add_action('manage_match_posts_custom_column', 'wk_tournament_schedule_posts_custom_columns_content', 10, 2);
 
-	function my_custom_menu() {
-		add_menu_page(
-			'Tournament Settings',
-			'Tournaments',
-			'manage_options',
-			'tournament-settings',
-			'tournament_settings_page',
-			'dashicons-admin-generic',
-			20
-		);
-	
-		add_submenu_page(
-			'tournament-settings',
-			'Tournament Settings',
-			'Settings',
-			'manage_options',
-			'tournament-settings',
-			'tournament_settings_page'
-		);
-	
-		add_submenu_page(
-			'tournament-settings',
-			'Tournament List',
-			'Tournaments',
-			'manage_options',
-			'edit.php?post_type=tournament'
-		);
-	
-		add_submenu_page(
-			'tournament-settings',
-			'Match List',
-			'Matches',
-			'manage_options',
-			'edit.php?post_type=match'
-		);
-	}
-	add_action('admin_menu', 'my_custom_menu');
+function my_custom_menu() {
+    add_menu_page(
+        'Tournament Settings',
+        'Tournaments',
+        'manage_options',
+        'tournament-settings',
+        'tournament_settings_page',
+        'dashicons-admin-generic',
+        20
+    );
 
-	function tournament_settings_page() {
-		?>
-		<div class="wrap">
-			<h1>Tournament Settings</h1>
-			<form id="tournament-settings-form">
-				<table class="form-table">
-					<tr valign="top">
-						<th scope="row">Tournament/Season ID</th>
-						<td><input type="text" id="tournament-id" name="tournament_id" value="" /></td>
-					</tr>
-				</table>
-				<button type="button" id="fetchTournaments" class="button button-primary" style="margin-right: 20px;">Fetch Season</button>
-				<button type="button" id="fetchMatches" class="button button-secondary">Fetch Tournament Schedule</button>
-			</form>
-			<div id="response"></div>
-		</div>
+    add_submenu_page(
+        'tournament-settings',
+        'Tournament Settings',
+        'Settings',
+        'manage_options',
+        'tournament-settings',
+        'tournament_settings_page'
+    );
+
+    add_submenu_page(
+        'tournament-settings',
+        'Tournament List',
+        'Tournaments',
+        'manage_options',
+        'edit.php?post_type=tournament'
+    );
+
+    add_submenu_page(
+        'tournament-settings',
+        'Match List',
+        'Matches',
+        'manage_options',
+        'edit.php?post_type=match'
+    );
+}
+add_action('admin_menu', 'my_custom_menu');
+
+function tournament_settings_page() {
+    ?>
+    <div class="wrap">
+        <h1>WXP Tournament Settings</h1>
+        <form method="post" action="options.php">
+            <?php settings_fields('tournament_settings_group'); ?>
+            <?php do_settings_sections('tournament-settings'); ?>
+            <table class="form-table">
+                <tr valign="top">
+                    <th scope="row">Team</th>
+                    <td>
+                        <input style="margin-right:20px;" type="text" id="team" name="wxp_tournament_team" value="<?php echo esc_attr(get_option('wxp_tournament_team')); ?>" />
+                        <?php submit_button('Gem Team', 'primary', 'submit', false); ?>
+                    </td>
+                </tr>
+                
+                <tr valign="top">
+                    <th scope="row">Sæson ID</th>
+                    <td>
+                        <input type="text" id="season-id" name="season_id" value="<?php echo esc_attr(get_option('season_id')); ?>" />
+                        <button type="button" id="fetchTournaments" class="button button-primary" style="margin-left: 20px;">Hent alle turneringer fra Sæson ID</button>
+                    </td>
+                </tr>
+                
+                <tr valign="top">
+                    <th scope="row">Turnering ID</th>
+                    <td>
+                        <input style="margin-right:10px;" type="text" id="tournament-id" name="tournament_id" value="<?php echo esc_attr(get_option('tournament_id')); ?>" />
+                        <button type="button" id="fetchMatches" class="button button-secondary" style="margin-left: 10px;">Hent alle matches fra Turnerings ID</button>
+                    </td>
+                </tr>
+            </table>
+        </form>
+        <div id="response"></div>
+    </div>
     <?php
 }
 
+function register_tournament_settings() {
+    register_setting('tournament_settings_group', 'season_id');
+    register_setting('tournament_settings_group', 'tournament_id');
+    register_setting('tournament_settings_group', 'wxp_tournament_team');
+}
+add_action('admin_init', 'register_tournament_settings');
+
+
+
 
 function wpse_get_dynamic_schedule_shortcode($atts) {
-	error_log(print_r( $atts, 1 ));
     // Extract shortcode attributes
     $atts = shortcode_atts(
         array(
-            'teamname' => '',
             'tournamentid' => 0
         ),
         $atts,
         'get_dynamic_schedule'
     );
 
-    $teamName = sanitize_text_field($atts['teamname']);
     $tournamentID = sanitize_text_field($atts['tournamentid']);
 
-    // If the tournamentID is not valid or teamName is empty, display an error message
-    if ($tournamentID <= 0 || empty($teamName)) {
-        return 'Invalid team name or tournament ID.';
+    // If the tournamentID is not valid, display an error message
+    if ($tournamentID <= 0) {
+        return 'Invalid tournament ID.';
     }
+
+    // Set the team name to "Herning"
+    $team = get_option('wxp_tournament_team', '');
 
     // Get the current date in the proper format for comparison
     $current_date = current_time('Y-m-d H:i:s');
@@ -550,15 +585,15 @@ function wpse_get_dynamic_schedule_shortcode($atts) {
                 'relation' => 'OR',
                 array(
                     'key' => 'homeTeamDisplayName',
-                    'value' => $teamName,
-                    'compare' => 'LIKE'
+                    'value' => $team,
+                    'compare' => '='
                 ),
                 array(
                     'key' => 'awayTeamDisplayName',
-                    'value' => $teamName,
-                    'compare' => 'LIKE'
+                    'value' => $team,
+                    'compare' => '='
                 )
-            ),
+            )
             /* array(
                 'key' => 'gameDate',
                 'value' => $current_date,
@@ -575,7 +610,7 @@ function wpse_get_dynamic_schedule_shortcode($atts) {
 
     // Check if there are any posts
     if (!$query->have_posts()) {
-        return 'No upcoming games found for the provided team and tournament ID.';
+        return 'No upcoming games found for the provided tournament ID.';
     }
 
     // Initialize HTML output with the table structure
@@ -597,39 +632,38 @@ function wpse_get_dynamic_schedule_shortcode($atts) {
     $output .= '</thead>';
     $output .= '<tbody>';
 
-		// Loop through each post and add it to the table
-		while ($query->have_posts()) {
-			$query->the_post();
-			$post_link = get_permalink(); // Get the permalink for each match post
-			$game_date = get_post_meta(get_the_ID(), 'gameDate', true);
-			$arena_name = get_post_meta(get_the_ID(), 'ArenaName', true);
-			$oponents = get_post_meta(get_the_ID(), 'oponents', true);
-			$score = get_post_meta(get_the_ID(), 'score', true);
-			$game_officials = get_post_meta(get_the_ID(), 'officials', true);
-			$speak = get_post_meta(get_the_ID(), 'speak', true);
-			$pc = get_post_meta(get_the_ID(), 'pc', true);
-			$ur = get_post_meta(get_the_ID(), 'ur', true);
-			$boks = get_post_meta(get_the_ID(), 'boks', true);
-			$cafe = get_post_meta(get_the_ID(), 'cafe', true);
-			$chauffor = get_post_meta(get_the_ID(), 'chauffor', true);
+    // Loop through each post and add it to the table
+    while ($query->have_posts()) {
+        $query->the_post();
+        $post_link = get_permalink(); // Get the permalink for each match post
+        $game_date = get_post_meta(get_the_ID(), 'gameDate', true);
+        $arena_name = get_post_meta(get_the_ID(), 'ArenaName', true);
+        $opponents = get_post_meta(get_the_ID(), 'oponents', true);
+        $score = get_post_meta(get_the_ID(), 'score', true);
+        $game_officials = get_post_meta(get_the_ID(), 'officials', true);
+        $speak = get_post_meta(get_the_ID(), 'speak', true);
+        $pc = get_post_meta(get_the_ID(), 'pc', true);
+        $ur = get_post_meta(get_the_ID(), 'ur', true);
+        $boks = get_post_meta(get_the_ID(), 'boks', true);
+        $cafe = get_post_meta(get_the_ID(), 'cafe', true);
+        $chauffor = get_post_meta(get_the_ID(), 'chauffor', true);
 
-			$output .= '<tr>';
-			$output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;">' . esc_html(date('j. F, Y, H:i', strtotime($game_date))) . '</td>';
-			$output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;">' . esc_html($arena_name) . '</td>';
-			$output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;"><a href="' . esc_url($post_link) . '">' . esc_html($oponents) . '</a></td>';
-			$output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;">' . esc_html($score) . '</td>';
-			$output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;">' . $game_officials . '</td>';
-			$output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;">' . $speak . '</td>';
-			$output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;">' . $pc . '</td>';
-			$output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;">' . $ur . '</td>';
-			$output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;">' . $boks . '</td>';
-			$output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;">' . $cafe . '</td>';
-			$output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;">' . $chauffor . '</td>';
-			$output .= '</tr>';
-		}
+        $output .= '<tr>';
+        $output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;">' . esc_html(date('j. F, Y, H:i', strtotime($game_date))) . '</td>';
+        $output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;">' . esc_html($arena_name) . '</td>';
+        $output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;"><a href="' . esc_url($post_link) . '">' . esc_html($opponents) . '</a></td>';
+        $output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;">' . esc_html($score) . '</td>';
+        $output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;">' . esc_html($game_officials) . '</td>';
+        $output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;">' . esc_html($speak) . '</td>';
+        $output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;">' . esc_html($pc) . '</td>';
+        $output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;">' . esc_html($ur) . '</td>';
+        $output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;">' . esc_html($boks) . '</td>';
+        $output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;">' . esc_html($cafe) . '</td>';
+        $output .= '<td style="border: 1px solid #dddddd; text-align: left; padding: 8px;">' . esc_html($chauffor) . '</td>';
+        $output .= '</tr>';
+    }
 
-		wp_reset_postdata();
-
+    wp_reset_postdata();
 
     $output .= '</tbody>';
     $output .= '</table>';
