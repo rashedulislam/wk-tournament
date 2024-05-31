@@ -156,7 +156,7 @@ function wk_fetch_tournaments_callback() {
     }
 
     $seasonID = sanitize_text_field($_POST['seasonID']);
-    $team = get_option('wxp_tournament_team', '');
+    // $team = get_option('wxp_tournament_team', '');
 
     if (empty($seasonID)) {
         wp_send_json_error([
@@ -243,7 +243,7 @@ function wk_fetch_tournament_schedule_callback() {
     }
 
     $tournamentID = sanitize_text_field($_POST['tournamentID']);
-    $team = get_option('wxp_tournament_team', '');
+    // $team = get_option('wxp_tournament_team', '');
 
     if (empty($tournamentID)) {
         wp_send_json_error([
@@ -251,11 +251,11 @@ function wk_fetch_tournament_schedule_callback() {
         ]);
     }
 
-    if (empty($team)) {
-        wp_send_json_error([
-            'message' => __('Team name is not set in the settings.', 'wk-tournament')
-        ]);
-    }
+    // if (empty($team)) {
+    //     wp_send_json_error([
+    //         'message' => __('Team name is not set in the settings.', 'wk-tournament')
+    //     ]);
+    // }
 
     $api_url = 'http://api.sportsadmin.dk/api/v1/GetTournamentSchedule?tournamentID=' . $tournamentID;
 
@@ -286,9 +286,9 @@ function wk_fetch_tournament_schedule_callback() {
     }
 
     foreach ($matches as $match) {
-        if ($match->homeTeamDisplayName !== $team && $match->awayTeamDisplayName !== $team) {
-            continue;
-        }
+        // if ($match->homeTeamDisplayName !== $team && $match->awayTeamDisplayName !== $team) {
+        //     continue;
+        // }
 
         $existingMatch = get_posts(array(
             'post_type' => 'match',
